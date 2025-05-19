@@ -6,7 +6,7 @@ import base64
 import cv2
 import numpy as np
 import requests
-from utils import AUTHORIZED
+from utils import AUTHORIZED, align_and_crop  # <-- Import align_and_crop from utils
 from config import WS_URL, FACE_DATA_URL
 
 class WSClientThread(threading.Thread):
@@ -34,13 +34,11 @@ class WSClientThread(threading.Thread):
                 print(f"[ws_client] Failed to send OPENED status: {e}")
 
     def handle_face_recognition_request(self, data):
-        # Extract fields
         b64img = data.get("face_image_base64")
-        user_id = data.get("user_id")
-        door_id = data.get("door_id")
-        command_id = data.get("command_id")
-        name = data.get("name", f"user_{user_id}")
-        # Decode base64 image
+        request_id = data.get("request_id")
+        name = data.get("name", f"user_{request_id}")
+        user_id = data.get("user_id", 1)  # fallback if not provided
+        device_id = data.get("device_id", "cam01")
         if not b64img:
             print("[ws_client] No image data in request")
             return
@@ -53,9 +51,9 @@ class WSClientThread(threading.Thread):
         except Exception as e:
             print(f"[ws_client] Failed to decode image: {e}")
             return
-        # Detect and recognize face
+        # Import recognizer models
         from recognizer import RecognizerThread
-        recog = RecognizerThread(None, None)  # dummy instance for model access
+        recog = RecognizerThread(None, None)
         dets = recog.face_det(img).results
         if not dets:
             print("[ws_client] No face detected in image")
@@ -65,20 +63,18 @@ class WSClientThread(threading.Thread):
         bbox = det.get("bbox", det.get("box", []))
         if len(lms) == 5 and len(bbox) == 4:
             pts = [lm_["landmark"] for lm_ in lms]
-            face = recog.align_and_crop(img, pts)
+            face = align_and_crop(img, pts)  # <-- Use align_and_crop from utils
             res = recog.face_rec(face).results
             emb = res[0].get("data", [[None]])[0]
             if emb is not None:
                 e = np.array(emb, dtype=np.float32)
                 e /= np.linalg.norm(e)
-                # Save to AUTHORIZED
                 AUTHORIZED.append((name, e))
-                # Send to backend
                 payload = {
                     "name": name,
                     "user": user_id,
                     "vector_data": e.tolist(),
-                    "metadata": {"source": "camera", "device_id": door_id, "command_id": command_id}
+                    "metadata": {"source": "camera", "device_id": device_id, "request_id": request_id}
                 }
                 try:
                     resp = requests.post(FACE_DATA_URL, json=payload, timeout=5)
@@ -97,14 +93,13 @@ class WSClientThread(threading.Thread):
           {"type": "door_status", "status": "OPEN", "timestamp": "..."}
         We enqueue the 'status' string for the main loop to handle.
         """
-        print(f"[ws_client] Raw message received: {message}")  # Debug print
         try:
             data = json.loads(message)
         except json.JSONDecodeError:
             print(f"[ws_client] Ignoring non-JSON message: {message!r}")
             return
 
-        if data.get("type") == "door_command" and data.get("command") == "face_recognition_request":
+        if data.get("type") == "face_recognition_request":
             self.handle_face_recognition_request(data)
             return
 

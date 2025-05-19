@@ -14,7 +14,7 @@ from config import FACE_DET_MODEL, FACE_REC_MODEL, INFERENCE_HOST, ZOO_URL, THRE
 from utils import align_and_crop, fetch_authorized_faces, AUTHORIZED
 
 # below this sim or lower, we treat as "unknown"
-UNKNOWN_SIM_THRESHOLD = 0.1
+UNKNOWN_SIM_THRESHOLD = 0.4  # was 0.1, now more reasonable
 
 class RecognizerThread(threading.Thread):
     def __init__(self, camera, event_queue):
@@ -38,15 +38,23 @@ class RecognizerThread(threading.Thread):
         fetch_authorized_faces()
 
     def run(self):
+        last_unknown_emb = None
+        unknown_start_time = None
+        UNKNOWN_HOLD_TIME = 3.0
+        UNKNOWN_DIFF_THRESHOLD = 0.6  # Only reset timer if embedding is very different
         while True:
             frame = self.camera.get_frame()
             if frame is None:
                 time.sleep(0.01)
+                unknown_start_time = None
+                last_unknown_emb = None
                 continue
 
             dets = self.face_det(frame).results
             if not dets:
                 time.sleep(0.01)
+                unknown_start_time = None
+                last_unknown_emb = None
                 continue
 
             det = dets[0]
@@ -71,21 +79,36 @@ class RecognizerThread(threading.Thread):
                         for name, vec in AUTHORIZED:
                             vec_norm = vec / np.linalg.norm(vec)
                             sim = float(np.dot(e, vec_norm))
-                            # print(sim)
                             if sim > best_sim:
                                 best_sim, best_name = sim, name
 
                         # only emit events for clear cases:
                         if best_sim >= THRESHOLD:
                             self.queue.put(("recognized", best_name, frame))
+                            unknown_start_time = None
+                            last_unknown_emb = None
                         elif best_sim <= UNKNOWN_SIM_THRESHOLD:
-                            self.queue.put(("unknown", e.tolist(), frame))
-                        # else: too ambiguous—ignore
-
-
+                            # If new unknown or embedding changed significantly, reset timer
+                            if last_unknown_emb is None or np.linalg.norm(e - last_unknown_emb) > UNKNOWN_DIFF_THRESHOLD:
+                                unknown_start_time = time.time()
+                                last_unknown_emb = e
+                                print("[recognizer] new unknown detected, timer started")
+                            else:
+                                # If same unknown, check hold time
+                                if unknown_start_time and (time.time() - unknown_start_time) >= UNKNOWN_HOLD_TIME:
+                                    self.queue.put(("unknown", e.tolist(), frame))
+                                    print("[recognizer] unknown in sight > 3s, event sent")
+                                    unknown_start_time = None  # Only send once per sighting
+                                    last_unknown_emb = None
+                        else:
+                            unknown_start_time = None
+                            last_unknown_emb = None
+            else:
+                unknown_start_time = None
+                last_unknown_emb = None
             time.sleep(0.01)
-            
 
-            
+
+
 
 
