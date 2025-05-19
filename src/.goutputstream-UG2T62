@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+import queue
+import time
+import sys
+
+from config import MIN_CLOSE_DELAY, UNKNOWN_COOLDOWN, RECOGNIZED_DELAY
+from camera import CameraThread
+from recognizer import RecognizerThread
+from ws_client import WSClientThread
+from door_controller import DoorController
+from notifier import notify_status, notify_unknown_face
+
+# After a WS “CLOSED” command, ignore WS‐opens for this many seconds
+CLOSE_SUPPRESS_TIME = 20.0
+
+def main():
+    cmd_q = queue.Queue()
+    evt_q = queue.Queue()
+
+    cam_thread   = CameraThread()
+    recog_thread = RecognizerThread(cam_thread, evt_q)
+    ws_thread    = WSClientThread(cmd_q)
+    door_ctrl    = DoorController()
+
+    cam_thread.start()
+    recog_thread.start()
+    ws_thread.start()
+
+    last_seen      = time.time()
+    last_unknown   = 0.0
+    last_close_cmd = 0.0
+    rec_start      = None
+
+    try:
+        while True:
+            now = time.time()
+
+            # 1) Handle WebSocket commands
+            while not cmd_q.empty():
+                cmd = cmd_q.get()
+                if cmd == "OPEN":
+                    if now - last_close_cmd >= CLOSE_SUPPRESS_TIME:
+                        if door_ctrl.open():
+                            notify_status("OPEN")
+                        last_seen = now
+                elif cmd == "CLOSED":
+                    if door_ctrl.close():
+                        notify_status("CLOSED")
+                    last_close_cmd = now
+                    rec_start      = None  # reset recognition timer
+
+            # 2) Handle recognition events
+            saw_recognized = False
+            unknown_events = []
+
+            # Collect all events this cycle
+            while not evt_q.empty():
+                evt = evt_q.get()
+                if evt[0] == "recognized":
+                    saw_recognized = True
+                elif evt[0] == "unknown":
+                    unknown_events.append(evt)
+
+            if saw_recognized:
+                # Drop any unknowns when a known face is present
+                last_unknown = now  # reset unknown cooldown
+                # Recognition hold logic
+                if rec_start is None:
+                    rec_start = now
+                if (now - rec_start) >= RECOGNIZED_DELAY:
+                    print("FURKAN",now - rec_start)
+                    if door_ctrl.open():
+                        notify_status("OPEN")
+                    last_seen = now
+            else:
+                # No known face—reset hold timer and process unknowns
+                rec_start = None
+                for _, emb, frame in unknown_events:
+                    if now - last_unknown >= UNKNOWN_COOLDOWN:
+                        notify_unknown_face(frame, emb)
+                        last_unknown = now
+
+            # 3) Auto-close after inactivity
+            if door_ctrl.is_open and (now - last_seen) >= MIN_CLOSE_DELAY:
+                if door_ctrl.close():
+                    notify_status("CLOSED")
+                last_close_cmd = now
+                rec_start      = None
+
+            time.sleep(0.01)
+
+    except KeyboardInterrupt:
+        print("Exiting…")
+        sys.exit(0)
+
+if __name__ == "__main__":
+    main()
