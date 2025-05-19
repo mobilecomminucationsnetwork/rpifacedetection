@@ -39,12 +39,12 @@ PWM_FREQUENCY    = 50      # Hz
 OPEN_ANGLE       = 0     # degrees (servo open position)
 CLOSED_ANGLE     = 140      # degrees (servo closed position)
 # How long to hold the pulse at each move
-HOLD_TIME        = 0.5    # seconds
+HOLD_TIME        = 1    # seconds
 
 # ─── CAMERA ────────────────────────────────────────────────────────────
 CAMERA_FORMAT    = "RGB888"
 CAMERA_SIZE      = (640, 640)
-STREAM_SIZE      = (640, 480)  # MJPEG/WS stream resolution
+STREAM_SIZE      = (640, 640)  # MJPEG/WS stream resolution
 
 # ─── LOGGING & MISC ───────────────────────────────────────────────────
 LOG_LEVEL        = "INFO"   # DEBUG, INFO, WARN, ERROR
@@ -54,7 +54,7 @@ LOG_LEVEL        = "INFO"   # DEBUG, INFO, WARN, ERROR
 ULTRASONIC_TRIG_PIN        = 23   # BCM pin for TRIG
 ULTRASONIC_ECHO_PIN        = 24   # BCM pin for ECHO
 ULTRASONIC_THRESHOLD_CM    = 10.0  # distance under which we trigger
-ULTRASONIC_HOLD_TIME_S     = 5.0  # must stay under threshold this long
+ULTRASONIC_HOLD_TIME_S     = 7.0  # must stay under threshold this long
 ULTRASONIC_MEASURE_INTERVAL_S = 0.1  # how often to measure (seconds)
 
 UNKNOWN_SIM_THRESHOLD = 0.1

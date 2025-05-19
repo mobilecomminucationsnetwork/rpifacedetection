@@ -41,7 +41,7 @@ class RecognizerThread(threading.Thread):
         last_unknown_emb = None
         unknown_start_time = None
         UNKNOWN_HOLD_TIME = 3.0
-        UNKNOWN_DIFF_THRESHOLD = 0.6  # Only reset timer if embedding is very different
+        UNKNOWN_DIFF_THRESHOLD = 0.8  # Only reset timer if embedding is very different
         while True:
             frame = self.camera.get_frame()
             if frame is None:
@@ -76,7 +76,7 @@ class RecognizerThread(threading.Thread):
 
                         # find best match
                         best_sim, best_name = 0.0, None
-                        for name, vec in AUTHORIZED:
+                        for name, vec, _ in AUTHORIZED:
                             vec_norm = vec / np.linalg.norm(vec)
                             sim = float(np.dot(e, vec_norm))
                             if sim > best_sim:

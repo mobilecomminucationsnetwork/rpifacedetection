@@ -6,7 +6,7 @@ import base64
 import cv2
 import numpy as np
 import requests
-from utils import AUTHORIZED, align_and_crop  # <-- Import align_and_crop from utils
+from utils import AUTHORIZED, align_and_crop, encode_image_to_base64  # <-- Import align_and_crop and encode_image_to_base64 from utils
 from config import WS_URL, FACE_DATA_URL
 
 class WSClientThread(threading.Thread):
@@ -34,11 +34,13 @@ class WSClientThread(threading.Thread):
                 print(f"[ws_client] Failed to send OPENED status: {e}")
 
     def handle_face_recognition_request(self, data):
+
         b64img = data.get("face_image_base64")
         request_id = data.get("request_id")
-        name = data.get("name", f"user_{request_id}")
+        name = data.get("name")
         user_id = data.get("user_id", 1)  # fallback if not provided
         device_id = data.get("device_id", "cam01")
+        print("NAME:",name)
         if not b64img:
             print("[ws_client] No image data in request")
             return
@@ -69,11 +71,13 @@ class WSClientThread(threading.Thread):
             if emb is not None:
                 e = np.array(emb, dtype=np.float32)
                 e /= np.linalg.norm(e)
-                AUTHORIZED.append((name, e))
+                face_b64 = encode_image_to_base64(face)
+                AUTHORIZED.append((name, e, face))
                 payload = {
                     "name": name,
                     "user": user_id,
                     "vector_data": e.tolist(),
+                    "face_image_base64": face_b64,
                     "metadata": {"source": "camera", "device_id": device_id, "request_id": request_id}
                 }
                 try:
@@ -93,6 +97,7 @@ class WSClientThread(threading.Thread):
           {"type": "door_status", "status": "OPEN", "timestamp": "..."}
         We enqueue the 'status' string for the main loop to handle.
         """
+
         try:
             data = json.loads(message)
         except json.JSONDecodeError:
@@ -101,6 +106,18 @@ class WSClientThread(threading.Thread):
 
         if data.get("type") == "face_recognition_request":
             self.handle_face_recognition_request(data)
+            return
+
+        if data.get("type") == "face_vector_deleted":
+            # Remove authorized face by name (or other unique key)
+            name = data.get("name")
+            if name:
+                before = len(AUTHORIZED)
+                AUTHORIZED[:] = [entry for entry in AUTHORIZED if entry[0] != name]
+                after = len(AUTHORIZED)
+                print(f"[ws_client] Deleted authorized face '{name}'. Before: {before}, After: {after}")
+            else:
+                print("[ws_client] face_vector_delete received without a name.")
             return
 
         if data.get("type") != "door_status":

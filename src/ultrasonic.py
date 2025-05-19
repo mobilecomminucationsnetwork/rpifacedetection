@@ -19,6 +19,8 @@ class UltrasonicThread(threading.Thread):
         super().__init__(daemon=True)
         self.queue = command_queue
         self.last_distance = None  # Track last valid distance
+        self._sensor_below_since = None
+        self._should_auto_close = False
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
         GPIO.setup([ULTRASONIC_TRIG_PIN], GPIO.OUT, initial=GPIO.LOW)
@@ -46,24 +48,24 @@ class UltrasonicThread(threading.Thread):
         duration = t1 - t0
         return (duration * 34300) / 2  # cm
 
+    def should_auto_close(self):
+        return self._should_auto_close
+
+    def reset_auto_close(self):
+        self._sensor_below_since = None
+        self._should_auto_close = False
+
     def run(self):
-        below_since = None
         while True:
             dist = self.measure_distance()
-            if dist is None:
-                print("[ultrasonic] timeout measuring distance")
+            self.last_distance = dist
+            now = time.time()
+            if dist is not None and dist <= ULTRASONIC_THRESHOLD_CM:
+                if self._sensor_below_since is None:
+                    self._sensor_below_since = now
+                elif (now - self._sensor_below_since) >= ULTRASONIC_HOLD_TIME_S:
+                    self._should_auto_close = True
             else:
-                print(f"[ultrasonic] distance = {dist:.1f} cm")
-                self.last_distance = dist  # Update last valid distance
-
-                if dist <= ULTRASONIC_THRESHOLD_CM:
-                    if below_since is None:
-                        below_since = time.time()
-                    elif time.time() - below_since >= ULTRASONIC_HOLD_TIME_S:
-                        print("[ultrasonic] under threshold for 5s → CLOSE")
-                        self.queue.put("CLOSED")
-                        below_since = None
-                else:
-                    below_since = None
-
+                self._sensor_below_since = None
+                self._should_auto_close = False
             time.sleep(ULTRASONIC_MEASURE_INTERVAL_S)

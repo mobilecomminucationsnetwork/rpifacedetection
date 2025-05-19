@@ -13,7 +13,7 @@ from recognizer import RecognizerThread
 from ws_client import WSClientThread
 from ultrasonic import UltrasonicThread
 from door_controller import DoorController
-from notifier import notify_status, notify_unknown_face
+from notifier import notify_unknown_face
 
 def main():
     # Queues for WS/ultrasonic commands and recognition events
@@ -34,7 +34,6 @@ def main():
     ultrasonic_thread.start()
 
     last_unknown       = 0.0
-    sensor_below_since = None
 
     try:
         while True:
@@ -44,25 +43,17 @@ def main():
             dist = getattr(ultrasonic_thread, "last_distance", None)
 
             # 2) If object has been under threshold for ULTRASONIC_HOLD_TIME_S, auto-close
-            if dist is not None and dist <= ULTRASONIC_THRESHOLD_CM:
-                if sensor_below_since is None:
-                    sensor_below_since = now
-                elif (now - sensor_below_since) >= ULTRASONIC_HOLD_TIME_S:
-                    closed = door_ctrl.close()
-
-                    if closed:
-                        notify_status("CLOSED")
-                        ws_thread.send_closed_status()
-                    sensor_below_since = None
-            else:
-                sensor_below_since = None
+            if ultrasonic_thread.should_auto_close():
+                closed = door_ctrl.close()
+                if closed:
+                    ws_thread.send_closed_status()
+                ultrasonic_thread.reset_auto_close()
 
             # 1) Handle OPEN/CLOSED commands from WS (manual), but only allow CLOSE if dist > threshold is ignored
             while not cmd_q.empty():
                 cmd = cmd_q.get()
                 if cmd == "OPEN":
                     if door_ctrl.open():
-                        notify_status("OPEN")
                         ws_thread.send_opened_status()
                 elif cmd == "CLOSED":
                     # Only ignore CLOSE if distance is greater than threshold
@@ -71,7 +62,6 @@ def main():
                         ws_thread.send_closed_status()  # Send CLOSED via websocket if ignored
                     else:
                         if door_ctrl.close():
-                            notify_status("CLOSED")
                             ws_thread.send_closed_status()
 
             # 3) Handle recognition events (immediate open on recognized)
@@ -79,7 +69,7 @@ def main():
                 evt = evt_q.get()
                 if evt[0] == "recognized":
                     if door_ctrl.open():
-                        notify_status("OPEN")
+                        pass
                 elif evt[0] == "unknown":
                     _, emb, frame = evt
                     if now - last_unknown >= UNKNOWN_COOLDOWN:

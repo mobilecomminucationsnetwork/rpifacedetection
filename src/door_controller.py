@@ -18,6 +18,7 @@ class DoorController:
         self._move(CLOSED_ANGLE)
         notify_status("CLOSED")
 
+
     def _move(self, angle: float) -> None:
         """
         Move servo to given angle and hold briefly to ensure position.
