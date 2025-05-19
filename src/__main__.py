@@ -41,6 +41,7 @@ def main():
 
             # read most recent distance measurement
             dist = getattr(ultrasonic_thread, "last_distance", None)
+            print(f"[MAIN] Ultrasonic distance: {dist}")
 
             # 2) If object has been under threshold for ULTRASONIC_HOLD_TIME_S, auto-close
             if ultrasonic_thread.should_auto_close():
@@ -55,6 +56,7 @@ def main():
                 if cmd == "OPEN":
                     if door_ctrl.open():
                         ws_thread.send_opened_status()
+                        ultrasonic_thread.door_is_open = True
                 elif cmd == "CLOSED":
                     # Only ignore CLOSE if distance is greater than threshold
                     if dist is not None and dist > ULTRASONIC_THRESHOLD_CM:
@@ -63,12 +65,14 @@ def main():
                     else:
                         if door_ctrl.close():
                             ws_thread.send_closed_status()
+                            ultrasonic_thread.door_is_open = False
 
             # 3) Handle recognition events (immediate open on recognized)
             while not evt_q.empty():
                 evt = evt_q.get()
                 if evt[0] == "recognized":
                     if door_ctrl.open():
+                        ultrasonic_thread.door_is_open = True
                         pass
                 elif evt[0] == "unknown":
                     _, emb, frame = evt

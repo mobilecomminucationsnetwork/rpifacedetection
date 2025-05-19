@@ -7,6 +7,8 @@ Notifier module handles all outbound HTTP notifications:
 import base64
 import cv2
 import requests
+import datetime
+from typing import Optional
 from config import ANON_STORE_URL, DOOR_STATUS_URL
 
 
@@ -25,7 +27,7 @@ def notify_status(status: str) -> None:
         print(f"[NOTIFIER] Failed to send door status '{status}': {exc}")
 
 
-def notify_unknown_face(frame: cv2.UMat or None, embedding: list or None) -> None:
+def notify_unknown_face(frame: Optional[cv2.UMat], embedding: Optional[list]) -> None:
     """
     Upload an unknown person's face image and embedding to the server.
 
@@ -46,7 +48,8 @@ def notify_unknown_face(frame: cv2.UMat or None, embedding: list or None) -> Non
     payload = {
         'name': 'Unknown Person',
         'vector_data': embedding,
-        'face_image_base64': f"data:image/jpeg;base64,{b64jpg}"
+        'face_image_base64': f"data:image/jpeg;base64,{b64jpg}",
+        'timestamp': datetime.datetime.utcnow().isoformat() + 'Z'
     }
     try:
         resp = requests.post(ANON_STORE_URL, json=payload, timeout=5)

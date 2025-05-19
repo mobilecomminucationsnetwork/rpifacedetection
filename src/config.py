@@ -53,7 +53,7 @@ LOG_LEVEL        = "INFO"   # DEBUG, INFO, WARN, ERROR
 # Ultrasonic sensor (HC-SR04)
 ULTRASONIC_TRIG_PIN        = 23   # BCM pin for TRIG
 ULTRASONIC_ECHO_PIN        = 24   # BCM pin for ECHO
-ULTRASONIC_THRESHOLD_CM    = 10.0  # distance under which we trigger
+ULTRASONIC_THRESHOLD_CM    = 15.0  # distance under which we trigger
 ULTRASONIC_HOLD_TIME_S     = 7.0  # must stay under threshold this long
 ULTRASONIC_MEASURE_INTERVAL_S = 0.1  # how often to measure (seconds)
 
